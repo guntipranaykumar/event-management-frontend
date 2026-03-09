@@ -71,7 +71,7 @@ jobs:
 
       # 9 CloudFront Cache Invalidation
       - name: Invalidate CloudFront Cache
-        if: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID != '' }}
+        if: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
         run: |
           echo "Invalidating CloudFront Cache"
           aws cloudfront create-invalidation \
