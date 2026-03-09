@@ -1,39 +1,78 @@
-name: Deploy Frontend to S3
+name: Deploy Frontend to S3 and CloudFront
 
 on:
   push:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      # 1 Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v3
 
+      # 2 Setup Node with cache
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: 18
+          node-version: 20
+          cache: 'npm'
 
-      - name: Install dependencies
-        run: npm install
+      # 3 Install dependencies (faster CI install)
+      - name: Install Dependencies
+        run: npm ci
 
-      - name: Build project
+      # 4 Build project
+      - name: Build Project
         run: npm run build
 
-      - name: Deploy to S3
-        run: aws s3 sync dist/ s3://${{ secrets.S3_BUCKET_NAME }} --delete
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+      # 5 Debug build output
+      - name: Debug Build Output
+        run: |
+          echo "Listing repository root:"
+          ls -la
 
-      - name: Invalidate CloudFront cache
-        run: aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+          echo "Checking for build or dist folder:"
+          if [ -d "build" ]; then
+            echo "React build folder detected"
+            echo "BUILD_DIR=build" >> $GITHUB_ENV
+          elif [ -d "dist" ]; then
+            echo "Angular dist folder detected"
+            echo "BUILD_DIR=dist" >> $GITHUB_ENV
+          else
+            echo "No build folder found!"
+            exit 1
+          fi
+
+      # 6 Configure AWS credentials
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # 7 Verify AWS identity
+      - name: Verify AWS Identity
+        run: aws sts get-caller-identity
+
+      # 8 Deploy to S3
+      - name: Deploy to S3
+        run: |
+          echo "Deploying $BUILD_DIR to S3"
+          aws s3 sync $BUILD_DIR/ s3://${{ secrets.S3_BUCKET_NAME }} --delete
+
+      # 9 CloudFront Cache Invalidation
+      - name: Invalidate CloudFront Cache
+        if: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID != '' }}
+        run: |
+          echo "Invalidating CloudFront Cache"
+          aws cloudfront create-invalidation \
+          --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+          --paths "/*"
