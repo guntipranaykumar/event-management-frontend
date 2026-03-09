@@ -71,9 +71,14 @@ jobs:
 
       # 9 CloudFront Cache Invalidation
       - name: Invalidate CloudFront Cache
-        if: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+        env:
+          CF_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
         run: |
-          echo "Invalidating CloudFront Cache"
-          aws cloudfront create-invalidation \
-          --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
-          --paths "/*"
+          if [ -n "$CF_ID" ]; then
+            echo "Invalidating CloudFront Cache"
+            aws cloudfront create-invalidation \
+              --distribution-id "$CF_ID" \
+              --paths "/*"
+          else
+            echo "CLOUDFRONT_DISTRIBUTION_ID not set. Skipping invalidation."
+          fi
